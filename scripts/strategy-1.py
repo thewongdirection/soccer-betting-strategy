@@ -1,34 +1,42 @@
-"""Strategy 1 -- weekly EPL backtest (last 2 seasons, $1,000 bankroll).
+"""Strategy 1 -- weekly EPL backtest runner (favourite / total-goals coverage).
 
-WHAT THIS RUNS
---------------
-The Strategy 1 betting rules (see ``soccer_backtest/strategy_1.py`` for the full
-description) applied to English Premier League matches, with a weekly
-game-selection wrapper and bankroll tracking:
+STRATEGY  (engine + full rationale: ``soccer_backtest/strategy_1.py``)
+    Probabilities are de-vigged implied odds, p_i = (1/odds_i) / sum_j(1/odds_j).
+      * 1X2 -- back the single most likely result (H/D/A) with $1, but only if
+               its probability exceeds ``THRESHOLD`` (70%). Most matches have no
+               such favourite and get no 1X2 bet.
+      * TG  -- back $1 on each of the ``TG_N`` (2) most probable exact total-goals
+               buckets (0..9, where 9 means "9 or more").
+    Bets settle at the same odds used to price them, so each bet's expected value
+    is negative by the bookmaker's margin -- the backtest measures the selection
+    rule's realised edge, not a mispricing model.
 
-  Per match, using de-vigged implied probs p_i = (1/odds_i) / sum_j(1/odds_j):
-    * 1X2  -> candidate bet: $1 on the top outcome IFF its prob > 70%.
-    * TG   -> candidate bet: $1 on each of the 2 most probable exact totals.
-
-  Selection: within each ISO calendar week, rank the candidate matches by
-  "confidence" (the highest qualifying probability available on the match) and
-  bet only the top ``MAX_GAMES_PER_WEEK`` (5) games. On each chosen game place
-  every qualifying leg. Flat $1 per bet. Bankroll starts at $1,000; drawdown is
-  measured on the running per-bet equity in match-date order.
+HOW THE TEST WORKS
+    * Universe: EPL matches in ``SEASONS`` (last two seasons).
+    * Weekly selection: matches are grouped into ISO calendar weeks; within each
+      week they are ranked by "confidence" (the highest qualifying probability on
+      the match) and only the top ``MAX_GAMES_PER_WEEK`` are bet. ``None`` (the
+      current default) bets every qualifying match; set an integer to cap.
+    * On each chosen match every qualifying leg is placed at flat ``STAKE`` ($1).
+    * Settlement: a 1X2 bet wins if FTR == pick; a TG bucket wins if it equals the
+      match's actual total goals (capped at 9).
+    * Bankroll starts at ``START_CAPITAL`` ($1,000); bets settle in match-date
+      order and the maximum drawdown is taken on that running equity curve.
+    * No look-ahead: every bet uses only that match's own pre-match odds.
 
 DATA
-----
-  * 1X2 odds  -> football-data, Bet365, closing price (both seasons).
-  * TG  odds  -> Singapore Pools / sgodds, joined to the football-data fixture
-                 by ``fixture_key`` (available for 2025-26 only; no exact-total-
-                 goals data exists anywhere for 2024-25, so that season is
-                 1X2-only).
-  * Scores/results come from football-data.
+    * 1X2 odds -> football-data, Bet365, closing price (both seasons).
+    * TG  odds -> Singapore Pools / sgodds, joined to the football-data fixture by
+                  ``fixture_key``. Exact-total-goals odds exist for EPL 2025-26
+                  only, so 2024-25 is effectively 1X2-only.
+    * Scores/results -> football-data.
 
 OUTPUT (data/processed/, git-ignored)
-  * strategy-1-bet-log.csv     -- every bet: teams, score, category, selection,
-                                  est. prob, odds, stake, W/L, profit, bankroll.
-  * strategy-1-weekly-pnl.csv  -- per-week games/bets/staked/P&L/bankroll.
+    * strategy-1-bet-log.csv    -- one row per bet: teams, score, category,
+                                   selection, est. prob, odds, stake, W/L, profit,
+                                   running bankroll.
+    * strategy-1-weekly-pnl.csv -- per-week games/bets/staked/P&L/bankroll.
+    Turn these into the formatted Excel workbook with strategy-1-report.py.
 """
 from __future__ import annotations
 
@@ -107,7 +115,7 @@ def main() -> None:
 
     cdf = pd.DataFrame(cands)
 
-    # ---- weekly selection (top 5 games by confidence) + settlement ----
+    # ---- weekly selection (top MAX_GAMES_PER_WEEK by confidence) + settlement ----
     bet_rows = []
     for wk, grp in cdf.groupby("week"):
         chosen = (grp if MAX_GAMES_PER_WEEK is None

@@ -1,17 +1,37 @@
-"""Strategy 2 -- Poisson value-betting backtest (independent model + Kelly).
+"""Strategy 2 -- Poisson value-betting backtest (independent model).
 
-Builds a look-ahead-free Poisson goals model per league (rolling home/away
-attack & defence ratings), turns it into 1X2 and Over/Under 2.5 probabilities,
-and bets only positive-expected-value selections against the market, staking
-fractional Kelly on a compounding bankroll. See soccer_backtest/strategy_2.py
-for the full method.
+STRATEGY  (engine + full rationale: ``soccer_backtest/strategy_2.py``)
+    A look-ahead-free Poisson goals model (rolling home/away attack & defence
+    ratings per league) -> scoreline matrix -> 1X2 and Over/Under 2.5
+    probabilities. Two selection modes:
+      * value (default) -- back a selection only when ``model_p * odds - 1``
+        exceeds ``--min-edge`` (positive expected value versus the market price).
+      * ``--pick``      -- back the model's single most likely selection per
+        market on *every* game, ignoring the edge filter (a raw test of the
+        model's picks rather than value betting).
+    Staking: fractional Kelly on a compounding bankroll (``--kelly``, capped by
+    ``--max-stake``), or a fixed amount with ``--flat``.
 
-Prerequisites: a data pull must exist (reads data/processed/*.parquet).
+HOW THE TEST WORKS
+    * Universe: ``--leagues`` over seasons ``--start-year``..``--end-year``
+      (football-data results + odds), processed in chronological match-date order.
+    * No look-ahead: ratings are updated *after* each match and used to predict
+      the next. ``--warmup`` extra prior seasons are loaded only to warm up the
+      ratings; bets are recorded solely inside the requested season window.
+    * Odds bet into: ``--book`` / ``--phase`` (e.g. Bet365 close). Note
+      football-data closing odds start ~2019; opening odds reach back to 2000.
+    * Settlement: 1X2 wins if FTR == selection; O/U 2.5 over wins on 3+ goals,
+      under on <=2 goals.
+    * Metrics: the report leads with the *flat-stake yield* (mean $1-unit P&L),
+      which isolates the edge from the Kelly path, then the Kelly bankroll and
+      drawdown, plus by-market/selection and by-season splits. A model_p vs
+      hit-rate line surfaces calibration / adverse selection.
+    Reads data/processed/*.parquet; writes data/processed/strategy-2-bet-log.csv.
 
 Examples:
-    python scripts/strategy-2.py
+    python scripts/strategy-2.py                                   # value bets, big-5, Kelly
+    python scripts/strategy-2.py --leagues ENG-PREM --pick --flat 1 --markets 1X2
     python scripts/strategy-2.py --book MarketMax --min-edge 0.03 --kelly 0.5
-    python scripts/strategy-2.py --leagues ENG-PREM --start-year 2005
 """
 from __future__ import annotations
 

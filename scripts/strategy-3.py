@@ -1,22 +1,32 @@
-"""Strategy 3 -- fitted Dixon-Coles value betting (EPL).
+"""Strategy 3 -- fitted Dixon-Coles value-betting backtest (EPL).
 
-A rolling, look-ahead-free Dixon-Coles model (soccer_backtest/strategy_3.py)
-prices 1X2 and Over/Under 2.5. Following the Strategy 2 review:
+STRATEGY  (engine + full rationale: ``soccer_backtest/strategy_3.py``)
+    A rolling, look-ahead-free Dixon-Coles model prices 1X2 and Over/Under 2.5.
+    Applying the Strategy 2 review recommendations:
+      * BLEND the model with the de-vigged market consensus (``--blend`` = weight
+        on the model), which keeps bets calibrated and curbs adverse selection.
+      * VALUE-bet at the BEST available opening price (market-max) when
+        ``blended_p * best_odds - 1 > --min-edge``. Line-shopping a soft opening
+        price -- not the sharp close -- is where a competent model can realise value.
+      * bet the low-margin O/U 2.5 market, not the ~29%-margin exact-total-goals book.
+    Staking: fractional Kelly (``--kelly``, capped by ``--max-stake``) or flat $1.
 
-  * BLEND the model with the de-vigged market consensus (curbs adverse selection);
-  * VALUE-bet at the BEST available opening price (market-max) when
-    blended_p * best_odds - 1 > min_edge;
-  * measure CLOSING-LINE VALUE (CLV) vs the de-vigged closing consensus -- the
-    real, low-variance edge signal;
-  * bet the low-margin O/U 2.5 market, not the ~29%-margin exact-total-goals book.
-
-The model is fitted once (the slow step); betting configs are then evaluated on
-the cached per-selection signals, so ``--sweep`` can grid blend x min_edge for
-free.
+HOW THE TEST WORKS
+    * Universe: ``--league`` over ``--start-year``..``--end-year``, in match-date
+      order. ``--warmup`` extra prior seasons warm up the fit; only matches in the
+      window are bet.
+    * No look-ahead: the Dixon-Coles model is refit weekly on the time-decayed
+      matches strictly *before* each fixture (see the engine).
+    * CLV: for every bet, closing-line value = ``close_p * best_odds - 1``, where
+      ``close_p`` is the de-vigged closing consensus. Positive average CLV is the
+      real, low-variance edge signal (P&L alone is noisy over a few thousand bets).
+    * Settlement: 1X2 wins if FTR == selection; O/U 2.5 over wins on 3+ goals.
+    * Efficiency: the model is fitted once (the slow step) and every candidate
+      selection's signals are cached, so ``--sweep`` grids blend x min-edge for
+      free to optimise on CLV.
+    Reads data/processed/*.parquet; writes data/processed/strategy-3-bet-log.csv.
 
     python scripts/strategy-3.py --markets 1X2 --kelly 0.25 --sweep
-
-Prerequisite: a data pull (reads data/processed/*.parquet).
 """
 from __future__ import annotations
 

@@ -110,6 +110,8 @@ class LeagueRatings:
         return self.t[name]
 
     def expected_goals(self, home: str, away: str):
+        """(lambda_home, lambda_away) from current ratings, or None until both
+        teams have >= min_games at the relevant venue (warm-up)."""
         if self.muH is None or home not in self.t or away not in self.t:
             return None
         h, a = self.t[home], self.t[away]
@@ -125,6 +127,8 @@ class LeagueRatings:
         return float(np.clip(lh, 0.15, 6.0)), float(np.clip(la, 0.15, 6.0))
 
     def update(self, home: str, away: str, gh: int, ga: int) -> None:
+        """Fold one played match into the league baselines and both teams'
+        EWMA venue goal rates. Call *after* predicting to avoid look-ahead."""
         if self.muH is None:
             self.muH, self.muA = float(gh), float(ga)
         else:

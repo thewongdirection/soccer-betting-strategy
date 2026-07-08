@@ -45,6 +45,14 @@ def total_goals_probs(M: np.ndarray, cap: int = 9) -> np.ndarray:
 
 
 class DixonColes:
+    """Rolling Dixon-Coles model: weighted-MLE attack/defence per team plus a
+    global home advantage and low-score rho, refit on a time-decayed window.
+
+    Usage per fixture (chronological, no look-ahead): ``fit(train, as_of)`` when
+    ``needs_refit(as_of)``, then ``expected_goals(home, away)`` -> feed into
+    ``scoreline_matrix`` / ``market_probs`` / ``total_goals_probs``.
+    """
+
     def __init__(self, half_life_days: float = 180, window_days: float = 550,
                  ridge: float = 0.05, fit_every_days: int = 7,
                  min_matches: int = 150):
@@ -61,6 +69,7 @@ class DixonColes:
         self._last_fit = None
 
     def needs_refit(self, as_of) -> bool:
+        """True if never fitted or the last fit is older than ``fit_every`` days."""
         return self._last_fit is None or (as_of - self._last_fit).days >= self.fit_every
 
     def _nll(self, theta, hi, ai, x, y, w, T):

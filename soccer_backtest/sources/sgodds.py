@@ -153,6 +153,9 @@ def _normalize_download(df: pd.DataFrame, league: str):
         # Asian handicap (per-side lines)
         add("AH", "HOME", _num(r, "Ah_01_Hcap"), _num(r, "Ah_01"))
         add("AH", "AWAY", _num(r, "Ah_02_Hcap"), _num(r, "Ah_02"))
+        # Exact full-time total goals; selection is the goal count, "9" = 9 or more.
+        for g in range(10):
+            add("TG", str(g), None, _num(r, f"Tg_{g:02d}"))
 
     return match_rows, odds_rows
 

@@ -60,6 +60,8 @@ python scripts/strategy-1-report.py             # 5. build the Excel workbook
 | `strategy-1.py` | Strategy 1 EPL backtest → CSVs | no | a pull |
 | `strategy-1-markets.py` | Strategy 1 across all sources/markets | no | a pull |
 | `strategy-1-report.py` | Excel workbook from the Strategy 1 CSVs | no | `strategy-1.py` |
+| `strategy-2.py` | Strategy 2 Poisson value-betting backtest | no | a pull |
+| `strategy-3.py` | Strategy 3 Dixon-Coles value-betting backtest | no | a pull |
 
 `<src>` is `footballdata`, `sgodds`, or `all`. Add `-h`/`--help` to any script
 for its full options.
@@ -183,7 +185,7 @@ Files:
 | File | Role |
 |------|------|
 | `soccer_backtest/strategy_1.py` | Engine: `implied_probs`, `backtest_1x2`, `backtest_tg`, `equity_curve`. Full rules in the module docstring. |
-| `scripts/strategy-1.py` | Canonical run — EPL, last 2 seasons, $1,000 bankroll, ≤5 games/week (top confidence), weekly P&L + drawdown. |
+| `scripts/strategy-1.py` | Canonical run — EPL, last 2 seasons, $1,000 bankroll, weekly game cap (`MAX_GAMES_PER_WEEK`, default all qualifying games), weekly P&L + drawdown. |
 | `scripts/strategy-1-markets.py` | Broad cross-source / cross-market P&L comparison over the full dataset. |
 | `scripts/strategy-1-report.py` | Builds the formatted Excel workbook from the run's CSVs. |
 
@@ -191,9 +193,11 @@ Run these with `python scripts/strategy-1.py` then `scripts/strategy-1-report.py
 (see [Running the scripts](#running-the-scripts); a data pull must exist first).
 
 Result on EPL 2024-25 + 2025-26 (Bet365 closing 1X2, Singapore Pools total goals
-for 2025-26): **−11.4% ROI**, final bankroll **$953.7 / $1,000**, max drawdown
-**−$53.8 (−5.4%)**. The 1X2 favourite leg is ≈break-even; the entire loss is the
-total-goals leg paying into the exotic market's large margin.
+for 2025-26; ≤5 games/week configuration): **−11.4% ROI**, final bankroll
+**$953.7 / $1,000**, max drawdown **−$53.8 (−5.4%)**. The 1X2 favourite leg is
+≈break-even; the entire loss is the total-goals leg paying into the exotic
+market's large margin. (Betting every qualifying game instead of the top 5
+scales the loss to ≈−12% ROI / −$114 drawdown.)
 
 ## Strategy 2 — Poisson value betting (independent model)
 
@@ -229,6 +233,44 @@ is the expected difficulty of beating efficient football markets with a simple
 model. Improvement levers: a properly fitted Dixon-Coles model (MLE, estimated
 `ρ`, opponent-adjusted, regularised), betting the best available price,
 probability calibration/shrinkage, and far more conservative staking.
+
+## Strategy 3 — Dixon-Coles value betting (fitted model)
+
+Strategy 2's recommended upgrade, implemented. A properly fitted **Dixon-Coles**
+model replaces the EWMA heuristic:
+
+- **Model** — weighted-MLE attack/defence per team + global home-advantage `γ`
+  and low-score `ρ`, on an exponentially time-decayed window with an L2 (ridge)
+  penalty that shrinks ratings toward the league mean (stabilises thin data and
+  promoted teams). Refit on a rolling basis, always on matches *before* the
+  fixture (no look-ahead). The scoreline matrix yields 1X2 and Over/Under 2.5
+  probabilities. (Maher 1982; Dixon & Coles 1997.)
+- **Blend** — bet probability = `blend·model + (1−blend)·market-consensus`, which
+  keeps bets calibrated and curbs adverse selection.
+- **Value at best price** — bet when `blended_p × best_odds − 1 > min-edge`, taking
+  the best available *opening* price (market-max). Bets the low-margin **O/U 2.5**,
+  not the exotic exact-totals book.
+- **CLV** — every bet's closing-line value (`close_p × best_odds − 1`) is reported;
+  positive average CLV is the real, low-variance edge signal.
+
+Files: `soccer_backtest/strategy_3.py` (engine), `scripts/strategy-3.py` (backtest;
+predicts once then evaluates configs on cached signals, so `--sweep` grids
+blend × min-edge on CLV for free).
+
+```bash
+python scripts/strategy-3.py --markets 1X2 --kelly 0.25 --sweep
+```
+
+**Result (EPL 2023–2025):** a real improvement in method but still no beatable
+edge on EPL. The fitted model is a **competent forecaster** (1X2 log-loss 0.986
+vs the market's 0.960 — close but the market is sharper), and value-betting it at
+best price lifts the 1X2 yield to ≈break-even with **+1.07% CLV**. But the sweep
+shows **CLV *rises* as the model weight *falls*** — i.e. the small positive CLV
+comes from **line-shopping (best price vs consensus), not the model**; the pure
+model has the *lowest* CLV. Conclusion across Strategies 1–3: **none beats the
+EPL market**, which is among the most efficient anywhere. A genuine edge more
+likely needs softer markets (lower divisions, less-liquid leagues) or a data
+edge (xG, lineups) — not a better model against EPL prices.
 
 ## Known limitations / next steps
 

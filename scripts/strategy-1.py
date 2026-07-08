@@ -47,7 +47,7 @@ START_CAPITAL = 1000.0
 STAKE = 1.0
 THRESHOLD = 0.70          # 1X2: only bet a favourite above this prob
 TG_N = 2                  # total goals: bet the N most probable outcomes
-MAX_GAMES_PER_WEEK = 5
+MAX_GAMES_PER_WEEK = None   # None = bet every qualifying game (no weekly cap)
 
 
 def isoweek(date_str: str) -> tuple[str, dt.date]:
@@ -110,7 +110,8 @@ def main() -> None:
     # ---- weekly selection (top 5 games by confidence) + settlement ----
     bet_rows = []
     for wk, grp in cdf.groupby("week"):
-        chosen = grp.sort_values("conf", ascending=False).head(MAX_GAMES_PER_WEEK)
+        chosen = (grp if MAX_GAMES_PER_WEEK is None
+                  else grp.sort_values("conf", ascending=False).head(MAX_GAMES_PER_WEEK))
         for c in chosen.itertuples(index=False):
             score = f"{c.fthg}-{c.ftag}"
             if c.onex2:
@@ -161,8 +162,9 @@ def main() -> None:
 
     staked = bl.stake.sum()
     profit = bl.profit.sum()
+    cap_label = "all" if MAX_GAMES_PER_WEEK is None else f"<={MAX_GAMES_PER_WEEK}"
     print(f"STRATEGY 1 | EPL {SEASONS[0]} + {SEASONS[1]} | start ${START_CAPITAL:.0f} | "
-          f"flat ${STAKE:.0f}/bet | <= {MAX_GAMES_PER_WEEK} games/week | "
+          f"flat ${STAKE:.0f}/bet | {cap_label} games/week | "
           f"1X2 p>{THRESHOLD:.0%} | TG top-{TG_N}\n")
     print("=== OVERALL ===")
     print(f"weeks active     : {len(wk)}")

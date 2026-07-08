@@ -152,7 +152,8 @@ def main() -> None:
         "1X2: stake $1 on the single most-likely outcome only if its prob > 70%.",
         "Total goals (0..9, where 9 = 9 or more): stake $1 on each of the 2 most",
         "     probable outcomes.",
-        "Selection: each ISO week, bet only the 5 games with the highest confidence.",
+        f"Selection: each ISO week, bet the highest-confidence games (up to "
+        f"{int(wk.games.max())} bet in a week here).",
         "Flat $1 per bet; bets settle at the same odds used to estimate probability.",
     ]:
         r += 1; put(r, 1, t)

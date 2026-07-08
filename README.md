@@ -195,6 +195,41 @@ for 2025-26): **−11.4% ROI**, final bankroll **$953.7 / $1,000**, max drawdown
 **−$53.8 (−5.4%)**. The 1X2 favourite leg is ≈break-even; the entire loss is the
 total-goals leg paying into the exotic market's large margin.
 
+## Strategy 2 — Poisson value betting (independent model)
+
+The high-impact upgrade: instead of pricing probabilities *from* the odds it bets
+into (Strategy 1, which can't beat the book), Strategy 2 builds an **independent**
+forecast and bets only positive-EV selections.
+
+- **Model** — per league, each team carries time-decayed home/away attack &
+  defence ratings estimated from past results only (look-ahead-free). Expected
+  goals `λ_home, λ_away` feed a Poisson scoreline matrix (optional Dixon-Coles
+  low-score correction) → 1X2 and Over/Under 2.5 probabilities. (Maher 1982;
+  Dixon & Coles 1997.)
+- **Value filter** — bet a selection only when `model_p × odds − 1 > min-edge`.
+- **Staking** — fractional Kelly on a compounding bankroll.
+
+Files: `soccer_backtest/strategy_2.py` (engine), `scripts/strategy-2.py` (backtest).
+
+```bash
+python scripts/strategy-2.py                          # big-5, 2010-25, vs Bet365 open
+python scripts/strategy-2.py --book MarketMax --min-edge 0.03   # best-price, looser filter
+```
+Key flags: `--leagues`, `--start-year/--end-year`, `--book/--phase`, `--min-edge`,
+`--kelly`, `--max-stake`, `--shrink` (regress ratings toward league mean), `--rho`
+(Dixon-Coles). Reads `matches_latest.parquet` + `odds_latest.parquet`; writes
+`strategy-2-bet-log.csv`.
+
+**Result (big-5, 2010–2025):** the naive model **does not beat the market** —
+flat-stake yield **−8.9%** vs Bet365 opening, **−4.2%** vs the best available
+price. It is overconfident on its bet subset (model 0.45 vs realised 0.34), so
+value-betting selects the model's own errors (adverse selection) — being more
+selective makes it worse — and Kelly on illusory edges busts the bankroll. This
+is the expected difficulty of beating efficient football markets with a simple
+model. Improvement levers: a properly fitted Dixon-Coles model (MLE, estimated
+`ρ`, opponent-adjusted, regularised), betting the best available price,
+probability calibration/shrinkage, and far more conservative staking.
+
 ## Known limitations / next steps
 
 - Season labels are derived uniformly via `season_from_date` (Aug–Jul boundary)

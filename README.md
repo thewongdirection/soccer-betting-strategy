@@ -1,4 +1,4 @@
-# soccer-backtest
+# soccer-betting-strategy
 
 Data pipeline for backtesting soccer betting strategies. Pulls **historical
 odds** and **final outcomes** from two sources into one normalized schema, so a
@@ -15,39 +15,76 @@ Use `footballdata` for statistically meaningful backtests (deep history, sharp
 Pinnacle prices). Use `sgodds` if the strategy is specifically about betting
 through Singapore Pools. Both normalize into the same tables.
 
-## Install
+## Prerequisites
+
+- **Python 3.10+**.
+- **Dependencies** — install once from the repo root:
+  ```bash
+  pip install -r requirements.txt
+  ```
+  `requests` + `beautifulsoup4` + `lxml` (fetching/scraping), `pandas` +
+  `pyarrow` (data + Parquet), and `openpyxl` (only used by
+  `scripts/strategy-1-report.py`, the Excel builder).
+- **Run every command from the repo root** (`soccer-betting-strategy/`), as
+  `python scripts/<name>.py`. Each script prepends the project root to
+  `sys.path`, so `import soccer_backtest` and the `data/` paths resolve
+  correctly; running from elsewhere will not find the package or the data.
+- **Network access** — only `pull_data.py` and `validate_dataset.py` reach the
+  internet (football-data.co.uk and sgodds.com). Requests are throttled
+  (~1.5 s/host) and cached under `data/raw/`, so re-runs are offline and free;
+  pass `--no-cache` to force a refresh. Every other script is fully offline.
+- **Pull before you backtest** — `data/` is git-ignored, so a fresh clone has no
+  data. The backtest/report scripts read `data/processed/*.parquet`, which the
+  pull produces. A full two-source pull is ~600 files (~15–20 min the first
+  time, then seconds from cache); the raw cache is ~65 MB and the SQLite DB
+  ~1.7 GB. Ensure `data/` is writable.
+
+## Running the scripts
+
+End-to-end, from a fresh clone:
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt                # 1. dependencies
+python scripts/pull_data.py all --format both  # 2. fetch + normalize -> data/processed/
+python scripts/validate_dataset.py             # 3. (optional) verify vs live sources
+python scripts/strategy-1.py                    # 4. run Strategy 1 -> bet-log + weekly CSVs
+python scripts/strategy-1-report.py             # 5. build the Excel workbook
 ```
 
-## Usage
+| Script | What it does | Network | Needs first |
+|--------|--------------|:-------:|-------------|
+| `enumerate_sources.py <src>` | List the leagues/seasons a source offers | scrape (sgodds only) | — |
+| `pull_data.py <src>` | Fetch, normalize and store odds + results | yes | — |
+| `validate_dataset.py` | Re-check a sample vs live source files + run invariants | yes | a pull |
+| `build_aliases.py` | Propose cross-source team-name aliases | yes | — |
+| `strategy-1.py` | Strategy 1 EPL backtest → CSVs | no | a pull |
+| `strategy-1-markets.py` | Strategy 1 across all sources/markets | no | a pull |
+| `strategy-1-report.py` | Excel workbook from the Strategy 1 CSVs | no | `strategy-1.py` |
 
-Enumerate what's available (footballdata builds URLs offline; `--probe` verifies
-each over HTTP):
+`<src>` is `footballdata`, `sgodds`, or `all`. Add `-h`/`--help` to any script
+for its full options.
 
+**Enumerate** (footballdata builds URLs offline; `--probe` verifies each over HTTP):
 ```bash
 python scripts/enumerate_sources.py sgodds
 python scripts/enumerate_sources.py footballdata --leagues ENG-PREM ITA-SA
 ```
 
-Pull data into `data/processed/`:
-
+**Pull** into `data/processed/`:
 ```bash
-# Big-5 leagues, last 10 seasons
-python scripts/pull_data.py footballdata \
-    --leagues ENG-PREM ESP-LL ITA-SA GER-BL1 FRA-L1 \
-    --start-year 2015 --end-year 2025
-
-# Current Singapore Pools odds + results
-python scripts/pull_data.py sgodds
-
-# Everything from both sources
-python scripts/pull_data.py all --format both
+python scripts/pull_data.py all --format both                     # everything, Parquet + SQLite
+python scripts/pull_data.py footballdata --leagues ENG-PREM ESP-LL \
+    ITA-SA GER-BL1 FRA-L1 --start-year 2015 --end-year 2025       # subset of leagues/seasons
+python scripts/pull_data.py sgodds                                # current Singapore Pools odds
 ```
+Flags: `--format {parquet,sqlite,both}`, `--leagues`, `--start-year/--end-year`,
+`--no-cache`.
 
-Raw downloads are cached under `data/raw/` (keyed by URL) so re-runs are free
-and don't re-hit the servers; `--no-cache` forces a refresh.
+**Strategy 1** reads `matches_latest.parquet` + `odds_latest.parquet`; tune the
+constants at the top of `scripts/strategy-1.py` (`SEASONS`, `START_CAPITAL`,
+`THRESHOLD`, `TG_N`, `MAX_GAMES_PER_WEEK` — `None` = every qualifying game).
+`strategy-1-report.py` reads the two CSVs that `strategy-1.py` writes, so run it
+second.
 
 ## Output schema (`data/processed/`)
 
@@ -150,11 +187,8 @@ Files:
 | `scripts/strategy-1-markets.py` | Broad cross-source / cross-market P&L comparison over the full dataset. |
 | `scripts/strategy-1-report.py` | Builds the formatted Excel workbook from the run's CSVs. |
 
-```bash
-python scripts/strategy-1.py         # -> data/processed/strategy-1-bet-log.csv, strategy-1-weekly-pnl.csv
-python scripts/strategy-1-report.py  # -> data/processed/strategy-1-epl-backtest.xlsx
-python scripts/strategy-1-markets.py # deep-history / all-books comparison
-```
+Run these with `python scripts/strategy-1.py` then `scripts/strategy-1-report.py`
+(see [Running the scripts](#running-the-scripts); a data pull must exist first).
 
 Result on EPL 2024-25 + 2025-26 (Bet365 closing 1X2, Singapore Pools total goals
 for 2025-26): **−11.4% ROI**, final bankroll **$953.7 / $1,000**, max drawdown
